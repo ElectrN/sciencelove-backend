@@ -36,10 +36,12 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Публичные эндпоинты
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-resources/**", "/webjars/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+                        .requestMatchers("/api/auth/test").permitAll()
+                        .requestMatchers("/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login").permitAll()
 
                         // Защищённые эндпоинты
                         .requestMatchers("/api/mentors/**").authenticated()
@@ -48,7 +50,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/chats/**").authenticated()
                         .requestMatchers("/api/matching/**").authenticated()
 
-                        // Всё остальное — требует аутентификации
+                        // Всё остальное
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
