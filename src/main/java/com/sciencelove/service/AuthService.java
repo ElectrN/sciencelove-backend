@@ -9,14 +9,11 @@ import com.sciencelove.repository.UserRepository;
 import com.sciencelove.security.JwtTokenProvider;
 import com.sciencelove.security.UserDetailsImpl;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -24,17 +21,14 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        // Проверка: email уже существует
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email уже зарегистрирован");
         }
 
-        // Создание пользователя
         User user = User.builder()
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
@@ -46,10 +40,9 @@ public class AuthService {
 
         userRepository.save(user);
 
-        // Генерация токена
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
         String token = tokenProvider.generateToken(auth);
         String refreshToken = tokenProvider.generateRefreshToken(user.getId());
@@ -63,16 +56,17 @@ public class AuthService {
     }
 
     public AuthResponse login(AuthRequest request) {
-        // Аутентификация
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
-
-        // Поиск пользователя
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
 
-        // Генерация токенов
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new RuntimeException("Неверный пароль");
+        }
+
+        UserDetailsImpl userDetails = UserDetailsImpl.build(user);
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+
         String token = tokenProvider.generateToken(auth);
         String refreshToken = tokenProvider.generateRefreshToken(user.getId());
 
@@ -89,7 +83,13 @@ public class AuthService {
             throw new RuntimeException("Пользователь не аутентифицирован");
         }
 
-        UserDetailsImpl userDetails = (UserDetailsImpl) auth.getPrincipal();
+        Object principal = auth.getPrincipal();
+
+        if (!(principal instanceof UserDetailsImpl)) {
+            throw new RuntimeException("Неверный тип principal");
+        }
+
+        UserDetailsImpl userDetails = (UserDetailsImpl) principal;
 
         User user = userRepository.findById(userDetails.getId())
                 .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
